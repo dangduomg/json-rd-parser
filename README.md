@@ -1,2 +1,2 @@
 # json-rd-parser
-recursive descent json parser written in pure python
+Recursive descent JSON parser written in pure Python
