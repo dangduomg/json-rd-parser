@@ -1,6 +1,6 @@
-from token import *
-from lexer import *
-from syntax_error import *
+from .token_ import *
+from .lexer import *
+from .syntax_error import *
 
 class Parser:
     def __init__(self, string: str):
@@ -102,3 +102,7 @@ class Parser:
         
     def _is_end(self, /) -> bool:
         return self._i >= len(self._tokens)
+
+
+def parse(s: str, /) -> object:
+    return Parser(s).parse()

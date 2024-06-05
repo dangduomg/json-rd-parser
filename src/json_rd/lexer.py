@@ -1,7 +1,8 @@
 import re
 from typing import NamedTuple, Iterator
 
-from token_ import *
+from .token_ import *
+from .syntax_error import *
 
 
 def lexer(s: str) -> Iterator[Token]:
