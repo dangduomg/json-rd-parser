@@ -1,7 +1,8 @@
-from typing import NamedTuple
+from dataclasses import dataclass
 
 
-class Token(NamedTuple):
+@dataclass(frozen=True)
+class Token:
     type: str
     lexeme: str
     object: object
