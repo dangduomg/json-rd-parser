@@ -1,35 +1,35 @@
-from .token_ import *
+from .token import *
 from .lexer import *
 from .syntax_error import *
+from .lazy_list import *
+
 
 class Parser:
-    def __init__(self, string: str):
-        self._tokens = list(lexer(string))
+    def __init__(self, string: str, /):
+        self._tokens = LazyList(lexer(string))
         self._i = 0
         
-    def parse(self) -> object:
+    def parse(self, /) -> object:
         # start: value EOF
         res = self._value()
         self._expect('EOF')
         return res
         
     def _value(self, /) -> object:
-        # value: object
-        #      | array
+        # value: LBRACE object_rest
+        #      | LBRACK array_rest
         #      | primitive
-        # object always start with LBRACE
         if self._curr_token.type == 'LBRACE':
-            return self._object()
-        # array always start with LBRACK
+            self._advance()
+            return self._object_rest()
         elif self._curr_token.type == 'LBRACK':
-            return self._array()
+            self._advance()
+            return self._array_rest()
         else:
             return self._primitive()
         
-    def _object(self, /) -> dict:
-        # object: LBRACE (pair (COMMA pair)*)? RBRACE
-        self._expect('LBRACE')
-        self._advance()
+    def _object_rest(self, /) -> dict:
+        # object_rest: (pair (COMMA pair)*)? RBRACE
         res = {}
         if self._curr_token.type != 'RBRACE':
             k, v = self._pair()
@@ -52,10 +52,8 @@ class Parser:
         v = self._value()
         return k, v
     
-    def _array(self, /) -> list:
-        # array: LBRACK (value (COMMA value)*)? RBRACK
-        self._expect('LBRACK')
-        self._advance()
+    def _array_rest(self, /) -> list:
+        # array_rest: (value (COMMA value)*)? RBRACK
         res = []
         # value never starts with RBRACK
         if self._curr_token.type != 'RBRACK':
@@ -80,15 +78,6 @@ class Parser:
         
     @property
     def _curr_token(self, /) -> Token:
-        if self._is_end():
-            if self._tokens:
-                prev_token = self._tokens[self._i - 1]
-                line = prev_token.line
-                col = prev_token.col + len(prev_token.lexeme)
-            else:
-                line = 1
-                col = 0
-            return Token('EOF', '', None, line, col)
         return self._tokens[self._i]
     
     def _expect(self, /, *types: str) -> None:
@@ -99,9 +88,6 @@ class Parser:
     
     def _advance(self, /) -> None:
         self._i += 1
-        
-    def _is_end(self, /) -> bool:
-        return self._i >= len(self._tokens)
 
 
 def parse(s: str, /) -> object:
