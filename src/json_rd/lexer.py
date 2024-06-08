@@ -1,37 +1,49 @@
 import re
-from typing import NamedTuple, Iterator
+from typing import Iterator
 
-from .token_ import *
+from .token import *
 from .syntax_error import *
 
 
-def lexer(s: str) -> Iterator[Token]:
-    patterns = r"""
-       (?P<LBRACE>  {
-     )|(?P<RBRACE>  }
-     )|(?P<LBRACK>  \[
-     )|(?P<RBRACK>  ]
-     )|(?P<COLON>   :
-     )|(?P<COMMA>   ,
-     )|(?P<TRUE>    true
-     )|(?P<FALSE>   false
-     )|(?P<NULL>    null
-     )|(?P<STRING>  " .*? (?:(?<!\\)"|$)
-     )|(?P<NUMBER>  [+-]? \d+ (?:\.\d+)? (?:e[+-]?\d+)?
-     )|(?P<WS>      [^\n\S]+
-     )|(?P<NL>      \n
-     )|(?P<INVALID> .
-     )
-    """
+PATTERNS = r"""
+      (?P<LBRACE>     {
+    )|(?P<RBRACE>     }
+    )|(?P<LBRACK>     \[
+    )|(?P<RBRACK>     ]
+    )|(?P<COLON>      :
+    )|(?P<COMMA>      ,
+    )|(?P<TRUE>       true
+    )|(?P<FALSE>      false
+    )|(?P<NULL>       null
+    )|(?P<STRING>     " .*? (?:(?<!\\)"|$)
+    )|(?P<NUMBER>     [+-]? \d+ (?:\.\d+)? (?:[Ee][+-]?\d+)?
+    )|(?P<WS>         [ \t]+
+    )|(?P<NL>         \n
+    )|(?P<INVALID_ID> [A-Za-z_]\w*
+    )|(?P<INVALID>    .
+    )
+"""
+VALID_IDS = ('true', 'false', 'null')
+LITERAL_ESCAPES = ('\\', '"', '/')
+SPECIAL_ESCAPES = {
+    'b': '\b',
+    'f': '\f',
+    'r': '\r',
+    'n': '\n',
+    't': '\t',
+}
+
+
+def lexer(s: str) -> Iterator[Token]:    
     line = 1
     line_start = 0
-    for m in re.finditer(patterns, s, re.X | re.I | re.M):
+    for m in re.finditer(PATTERNS, s, re.X | re.M):
         type_ = str(m.lastgroup)
         lexeme = m[type_]
         object_: object = None
         col = m.start(type_) - line_start
         if type_ in ('TRUE', 'FALSE'):
-            object_ = bool(lexeme)
+            object_ = type_ == 'TRUE'
         elif type_ == 'STRING':
             str_builder = []
             i = 1
@@ -45,23 +57,11 @@ def lexer(s: str) -> Iterator[Token]:
                         col += i - 1
                         syntax_error(line, col, 'Unescaped backslash at the end of string')
                     esc = lexeme[i]
-                    if esc in ('"', '\\', '/'):
+                    if esc in LITERAL_ESCAPES:
                         str_builder.append(esc)
                         i += 1
-                    elif esc == 'b':
-                        str_builder.append('\b')
-                        i += 1
-                    elif esc == 'f':
-                        str_builder.append('\f')
-                        i += 1
-                    elif esc == 'r':
-                        str_builder.append('\r')
-                        i += 1
-                    elif esc == 'n':
-                        str_builder.append('\n')
-                        i += 1
-                    elif esc == 't':
-                        str_builder.append('\t')
+                    elif esc in SPECIAL_ESCAPES:
+                        str_builder.append(SPECIAL_ESCAPES[esc])
                         i += 1
                     elif esc == 'u':
                         i += 1
@@ -105,6 +105,10 @@ def lexer(s: str) -> Iterator[Token]:
             line += 1
             line_start = m.start(type_) + 1
             continue
+        elif type_ == 'INVALID_ID':
+            syntax_error(line, col, f'Only allowed identifiers are {VALID_IDS}')
         elif type_ == 'INVALID':
             syntax_error(line, col, 'Invalid character')
         yield Token(type_, lexeme, object_, line, col)
+    
+    yield Token('EOF', '', None, line, len(s) - line_start)
