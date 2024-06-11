@@ -1,12 +1,11 @@
 from .token import *
 from .lexer import *
 from .syntax_error import *
-from .lazy_list import *
 
 
 class Parser:
     def __init__(self, string: str, /):
-        self._tokens = LazyList(lexer(string))
+        self._tokens = list(lexer(string))
         self._i = 0
         
     def parse(self, /) -> object:

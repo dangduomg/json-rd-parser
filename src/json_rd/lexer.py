@@ -1,11 +1,12 @@
 import re
 from typing import Iterator
+from ast import literal_eval
 
 from .token import *
 from .syntax_error import *
 
 
-PATTERNS = r"""
+PATTERNS = re.compile(r"""
       (?P<LBRACE>     {
     )|(?P<RBRACE>     }
     )|(?P<LBRACK>     \[
@@ -22,74 +23,37 @@ PATTERNS = r"""
     )|(?P<INVALID_ID> [A-Za-z_]\w*
     )|(?P<INVALID>    .
     )
-"""
+""", re.X | re.M)
+
 VALID_IDS = ('true', 'false', 'null')
-LITERAL_ESCAPES = ('\\', '"', '/')
-SPECIAL_ESCAPES = {
-    'b': '\b',
-    'f': '\f',
-    'r': '\r',
-    'n': '\n',
-    't': '\t',
-}
+
+UNBAL_RE = re.compile(r'(?<!(?<!\\)")$')
+CTRL_CHAR_RE = re.compile(r'[\x00-\x1f]')
+INVALID_ESC_RE = re.compile(r'\\(?:[^bfrntu"\\/]|u[\dA-Fa-f]{0,3}(?![\dA-Fa-f]))')
 
 
 def lexer(s: str) -> Iterator[Token]:    
     line = 1
     line_start = 0
-    for m in re.finditer(PATTERNS, s, re.X | re.M):
+    
+    for m in PATTERNS.finditer(s):
         type_ = str(m.lastgroup)
         lexeme = m[type_]
         object_: object = None
         col = m.start(type_) - line_start
         if type_ in ('TRUE', 'FALSE'):
-            object_ = type_ == 'TRUE'
+            object_ = (type_ == 'TRUE')
         elif type_ == 'STRING':
-            str_builder = []
-            i = 1
-            while True:
-                if i >= len(lexeme):
-                    syntax_error(line, col, 'Unbalanced string')
-                c = lexeme[i]
-                if c == '\\':
-                    i += 1
-                    if i >= len(lexeme):
-                        col += i - 1
-                        syntax_error(line, col, 'Unescaped backslash at the end of string')
-                    esc = lexeme[i]
-                    if esc in LITERAL_ESCAPES:
-                        str_builder.append(esc)
-                        i += 1
-                    elif esc in SPECIAL_ESCAPES:
-                        str_builder.append(SPECIAL_ESCAPES[esc])
-                        i += 1
-                    elif esc == 'u':
-                        i += 1
-                        codepoint = []
-                        for j in range(4):
-                            if i >= len(lexeme):
-                                col += i - 1
-                                syntax_error(line, col, 'Unicode escape incomplete')
-                            c = lexeme[i]
-                            if not re.match(r'[\da-f]', c, re.I):
-                                col += i
-                                syntax_error(line, col, 'Invalid character for Unicode escape')
-                            codepoint.append(c)
-                            i += 1
-                        char = chr(int(''.join(codepoint), base=16))
-                        str_builder.append(char)
-                    else:
-                        col += i
-                        syntax_error(line, col, 'Invalid escape character')
-                elif c == '"':
-                    object_ = ''.join(str_builder)
-                    break
-                elif ord(c) < 0x20 or 0x80 <= ord(c) < 0xa0:
-                    col += i
-                    syntax_error(line, col, 'Unescaped control character')
-                else:
-                    str_builder.append(c)
-                    i += 1
+            if unbal_match := UNBAL_RE.search(lexeme):
+                col += unbal_match.start()
+                syntax_error(line, col, 'Unbalanced string')
+            if ctrl_char_match := CTRL_CHAR_RE.search(lexeme):
+                col += ctrl_char_match.start()
+                syntax_error(line, col, 'Control character found in string')
+            if invalid_esc_match := INVALID_ESC_RE.search(lexeme):
+                col += invalid_esc_match.start()
+                syntax_error(line, col, 'Invalid escape sequence')
+            object_ = literal_eval(lexeme)
         elif type_ == 'NUMBER':
             i = 0
             if lexeme[i] in ('+', '-'):
@@ -110,5 +74,5 @@ def lexer(s: str) -> Iterator[Token]:
         elif type_ == 'INVALID':
             syntax_error(line, col, 'Invalid character')
         yield Token(type_, lexeme, object_, line, col)
-    
+        
     yield Token('EOF', '', None, line, len(s) - line_start)
